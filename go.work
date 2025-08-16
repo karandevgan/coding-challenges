@@ -4,4 +4,5 @@ use (
 	json-parser
 	wc-tool
 	stack
+	compression
 )
