@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 func main() {
@@ -27,8 +29,6 @@ func main() {
 	if len(args) < 1 {
 		readStdin = true
 	}
-	const maxLine = 256 * 1024
-	buf := make([]byte, maxLine)
 	var f *os.File
 	var fileName string
 	var err error
@@ -51,9 +51,10 @@ func main() {
 	tWords := 0
 	tChars := 0
 
-	var outputStrArr []string
+	reader := bufio.NewReader(f)
+	inWord := false
 	for {
-		n, err := f.Read(buf)
+		r, n, err := reader.ReadRune()
 		if err == io.EOF {
 			break
 		}
@@ -64,31 +65,27 @@ func main() {
 		if n == 0 {
 			break
 		}
-		buf = buf[:n]
 		tBytes += n
-		// count words
-		wEnd := false
-		var prevChar string
-		for _, b := range buf {
-			char := string(b)
-			// check if char is whitespace
-			if strings.Contains(" \t\n\r", char) && !wEnd {
-				wEnd = true
+		tChars += 1
+		if r == '\n' {
+			tLines += 1
+		}
+		// check if char is whitespace
+		if unicode.IsSpace(r) {
+			if inWord {
 				tWords += 1
-			} else if !strings.Contains(" \t\n\r", char) {
-				wEnd = false
+				inWord = false
 			}
-			if !strings.Contains("\n\r", char) {
-				tChars += 1
-			}
-			if strings.Contains("\n\r", char) && prevChar != "\n" && char != "\r" {
-				tChars += 1
-				tLines += 1
-			}
-			prevChar = char
+		} else {
+			inWord = true
 		}
 	}
 
+	if inWord {
+		tWords += 1
+	}
+
+	var outputStrArr []string
 	if *cLines {
 		outputStrArr = append(outputStrArr, strconv.Itoa(tLines))
 	}
