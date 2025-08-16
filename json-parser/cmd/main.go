@@ -21,9 +21,9 @@ func main() {
 	fileName := args[0]
 	validJson := validateJSONFromFile(fileName)
 	if validJson {
-		fmt.Printf("Valid JSON")
+		fmt.Println("Valid JSON")
 	} else {
-		fmt.Printf("Invalid JSON")
+		fmt.Println("Invalid JSON")
 	}
 }
 
@@ -39,29 +39,34 @@ func validateJSONFromFile(fileName string) bool {
 }
 
 func validateJSON(reader *bufio.Reader) bool {
-	isValidJSON := false
-	for {
-		iterateOverContinuousWhitespace(reader)
-		r, _, err := reader.ReadRune()
-		if err != nil {
-			if err == io.EOF {
-				return isValidJSON
-			}
-			return false
-		}
-		if r == '{' {
-			_ = reader.UnreadRune()
-			isValidJSON = validateJSONObject(reader)
-		} else if r == '[' {
-			_ = reader.UnreadRune()
-			isValidJSON = validateJSONArray(reader)
-		} else {
-			return false
-		}
-		if !isValidJSON {
-			return false
-		}
+	// Only allow a single top-level value that is either an object or an array.
+	iterateOverContinuousWhitespace(reader)
+	// Peek first non-whitespace rune to decide top-level type
+	r, _, err := reader.ReadRune()
+	if err != nil {
+		return false
 	}
+	if r != '{' && r != '[' {
+		// Top-level must be object or array
+		return false
+	}
+	_ = reader.UnreadRune()
+	var ok bool
+	if r == '{' {
+		ok = validateJSONObject(reader)
+	} else {
+		ok = validateJSONArray(reader)
+	}
+	if !ok {
+		return false
+	}
+	iterateOverContinuousWhitespace(reader)
+	_, _, err = reader.ReadRune()
+	if err == io.EOF {
+		return true
+	}
+	// Any non-whitespace after a complete value is invalid JSON
+	return false
 }
 
 func validateJSONObject(reader *bufio.Reader) bool {
@@ -165,7 +170,7 @@ func validateJSONValue(reader *bufio.Reader) bool {
 			return validateString(reader)
 		} else if r == 'n' {
 			return validateSequence(reader, []int32{'u', 'l', 'l'})
-		} else if unicode.IsDigit(r) || r == '-' || r == '+' {
+		} else if unicode.IsDigit(r) || r == '-' {
 			_ = reader.UnreadRune()
 			return validateNumber(reader)
 		} else if r == 't' {
@@ -181,18 +186,28 @@ func validateJSONValue(reader *bufio.Reader) bool {
 func validateNumber(reader *bufio.Reader) bool {
 	isFirstDigit := true
 	isLeadingZero := false
+	signSeen := false
 	for {
 		r, _, err := reader.ReadRune()
 		if err != nil {
+			// EOF is valid only if we've consumed at least one digit
+			if err == io.EOF {
+				return !isFirstDigit
+			}
 			return false
 		}
 		if !unicode.IsDigit(r) {
-			if r == '+' || r == '-' {
-				// Only the first digit can be a sign
-				if !isFirstDigit {
+			// Only a single leading '-' is allowed
+			if r == '-' {
+				if !isFirstDigit || signSeen {
 					return false
 				}
+				signSeen = true
 				continue
+			}
+			// No '+' allowed at any position in JSON numbers
+			if r == '+' {
+				return false
 			}
 			if isFirstDigit {
 				return false
@@ -210,6 +225,7 @@ func validateNumber(reader *bufio.Reader) bool {
 			isLeadingZero = true
 		}
 		if isLeadingZero && !isFirstDigit {
+			// No digits allowed after a leading zero unless followed by . or exponent (handled above)
 			return false
 		}
 		isFirstDigit = false
@@ -221,6 +237,10 @@ func validateDecimalPart(reader *bufio.Reader) bool {
 	for {
 		r, _, err := reader.ReadRune()
 		if err != nil {
+			if err == io.EOF {
+				// Valid only if we saw at least one digit after the decimal point
+				return !isFirstDigit
+			}
 			return false
 		}
 		if !unicode.IsDigit(r) {
@@ -240,17 +260,23 @@ func validateDecimalPart(reader *bufio.Reader) bool {
 
 func validateExponentPart(reader *bufio.Reader) bool {
 	isFirstDigit := true
+	signSeen := false
 	for {
 		r, _, err := reader.ReadRune()
 		if err != nil {
+			if err == io.EOF {
+				// Must have at least one digit in the exponent
+				return !isFirstDigit
+			}
 			return false
 		}
 		if !unicode.IsDigit(r) {
 			if r == '+' || r == '-' {
-				// Sign can be only before the first digit
-				if !isFirstDigit {
+				// Allow at most one sign and only before the first digit
+				if !isFirstDigit || signSeen {
 					return false
 				}
+				signSeen = true
 				continue
 			}
 			if isFirstDigit {
@@ -281,26 +307,47 @@ func validateSequence(reader *bufio.Reader, seq []int32) bool {
 }
 
 func validateString(reader *bufio.Reader) bool {
-	prevRune := rune(0)
+	// Called after the opening double quote (") has been consumed.
 	for {
 		r, _, err := reader.ReadRune()
 		if err != nil {
 			return false
 		}
-		if r == '\n' || r == '\r' || r == '\t' {
-			return false
-		}
-		if r == ' ' && prevRune == '\\' {
-			return false
-		}
-		if r == '"' && prevRune != '\\' {
+		// Closing quote (not escaped) ends the string
+		if r == '"' {
 			return true
 		}
-		if r == '\\' && prevRune == '\\' {
-			prevRune = rune(0)
-		} else {
-			prevRune = r
+		// Unescaped control characters (U+0000 through U+001F) are not allowed in JSON strings
+		if r < 0x20 {
+			return false
 		}
+		if r == '\\' {
+			// Validate escape sequence
+			esc, _, err := reader.ReadRune()
+			if err != nil {
+				return false
+			}
+			switch esc {
+			case '"', '\\', '/', 'b', 'f', 'n', 'r', 't':
+				// Valid simple escapes
+			case 'u':
+				// Expect exactly four hex digits
+				for i := 0; i < 4; i++ {
+					h, _, err := reader.ReadRune()
+					if err != nil {
+						return false
+					}
+					if !isHexDigit(h) {
+						return false
+					}
+				}
+			default:
+				return false
+			}
+			// Continue scanning characters after a valid escape sequence
+			continue
+		}
+		// Any other rune is fine (already filtered out control chars)
 	}
 }
 
@@ -316,4 +363,11 @@ func iterateOverContinuousWhitespace(reader *bufio.Reader) {
 		_ = reader.UnreadRune()
 		break
 	}
+}
+
+// isHexDigit reports whether r is a hexadecimal digit.
+func isHexDigit(r rune) bool {
+	return (r >= '0' && r <= '9') ||
+		(r >= 'a' && r <= 'f') ||
+		(r >= 'A' && r <= 'F')
 }

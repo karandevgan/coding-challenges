@@ -26,7 +26,6 @@ func TestValidateJSONFromFile_Table(t *testing.T) {
 		{"Step5Valid2", "../test_files/step5/valid2.json", true},
 		{"Step5Valid3", "../test_files/step5/valid3.json", true},
 		{"Step5Invalid1", "../test_files/step5/fail1.json", false},
-		{"Step5Invalid1", "../test_files/step5/fail1.json", false},
 		{"Step5Invalid2", "../test_files/step5/fail2.json", false},
 		{"Step5Invalid3", "../test_files/step5/fail3.json", false},
 		{"Step5Invalid4", "../test_files/step5/fail4.json", false},
