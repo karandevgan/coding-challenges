@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func getFrequenciesFromFile(file string) (map[rune]int, error) {
+func getFrequenciesFromFile(file string) (map[rune]int32, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, err
@@ -15,8 +15,8 @@ func getFrequenciesFromFile(file string) (map[rune]int, error) {
 	return getFrequencies(reader)
 }
 
-func getFrequencies(reader *bufio.Reader) (freqMap map[rune]int, err error) {
-	freqMap = make(map[rune]int)
+func getFrequencies(reader *bufio.Reader) (freqMap map[rune]int32, err error) {
+	freqMap = make(map[rune]int32)
 	for {
 		r, _, err := reader.ReadRune()
 		if err != nil {

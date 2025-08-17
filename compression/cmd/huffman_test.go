@@ -10,13 +10,13 @@ import (
 func TestHuffmanTree(t *testing.T) {
 	tests := []struct {
 		name                string
-		inputMap            map[rune]int
+		inputMap            map[rune]int32
 		expectedTree        *HuffmanNode
 		expectedLookupTable map[rune]lookupValue
 	}{
 		{
 			name:                "test1",
-			inputMap:            map[rune]int{'C': 32, 'D': 42, 'E': 120, 'K': 7, 'L': 42, 'M': 24, 'U': 37, 'Z': 2},
+			inputMap:            map[rune]int32{'C': 32, 'D': 42, 'E': 120, 'K': 7, 'L': 42, 'M': 24, 'U': 37, 'Z': 2},
 			expectedTree:        getExpectedTreeTest1(),
 			expectedLookupTable: getExpectedLookupTableTest1(),
 		},
@@ -43,7 +43,7 @@ func TestCompression(t *testing.T) {
 		lookupTable            map[rune]lookupValue
 		input                  string
 		expectedCompressed     []uint32
-		expectedLastBitsToRead uint
+		expectedLastBitsToRead uint8
 	}{
 		{
 			name:                   "Test DEED",
@@ -63,7 +63,7 @@ func TestCompression(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, aLastBitsToRead := compressString(tc.input, tc.lookupTable, uint32(0), uint(32))
+			actual, aLastBitsToRead := compressString(tc.input, tc.lookupTable, uint32(0), uint8(32))
 			if b := slices.Equal(tc.expectedCompressed, actual); !b {
 				t.Fatalf("unexpected output: expectedCompressed %v, got %v", tc.expectedCompressed, actual)
 			}
@@ -79,7 +79,7 @@ func TestDecompression(t *testing.T) {
 		name                 string
 		huffmanTree          *HuffmanNode
 		input                uint32
-		lastBitsToRead       uint
+		lastBitsToRead       uint8
 		expectedDecompressed string
 	}{
 		{
@@ -100,7 +100,7 @@ func TestDecompression(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, runes, err := decompressString(tc.input, tc.lastBitsToRead, tc.huffmanTree)
+			_, runes, err := decompressString(tc.input, tc.lastBitsToRead, tc.huffmanTree, tc.huffmanTree)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

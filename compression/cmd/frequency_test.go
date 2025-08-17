@@ -9,10 +9,10 @@ func TestFrequencies(t *testing.T) {
 	tests := []struct {
 		name     string
 		file     string
-		expected map[rune]int
+		expected map[rune]int32
 		err      error
 	}{
-		{name: "test1", file: "../test_files/test.txt", expected: map[rune]int{'X': 333, 't': 223000}, err: nil},
+		{name: "test1", file: "../test_files/test.txt", expected: map[rune]int32{'X': 333, 't': 223000}, err: nil},
 	}
 
 	for _, tc := range tests {
