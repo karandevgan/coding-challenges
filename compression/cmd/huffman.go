@@ -107,10 +107,10 @@ func createHuffmanTree(nodes []*HuffmanNode) *HuffmanNode {
 	return createHuffmanTree(newNodes)
 }
 
-func compressString(input string, lookupMap map[rune]lookupValue) []uint32 {
+func compressString(input string, lookupMap map[rune]lookupValue, seedUint32 uint32, seedRemainingBits uint) ([]uint32, uint) {
 	var compressed []uint32
-	compressedUint32 := uint32(0)
-	remainingBits := uint(32)
+	compressedUint32 := seedUint32
+	remainingBits := seedRemainingBits
 	for i, c := range input {
 		lValue := lookupMap[c]
 		v := uint32(lValue.representation)
@@ -127,18 +127,23 @@ func compressString(input string, lookupMap map[rune]lookupValue) []uint32 {
 			remainingBits -= n
 		}
 		// Need only to be added if the compressed string is not a multiple of 32 bits and have remaining bits.
-		if i == len(input)-1 && remainingBits < 32 {
-			compressedUint32 = compressedUint32 << remainingBits
-			compressed = append(compressed, compressedUint32)
+		if i == len(input)-1 {
+			if remainingBits < 32 {
+				compressedUint32 = compressedUint32 << remainingBits
+				compressed = append(compressed, compressedUint32)
+			}
 		}
 	}
-	return compressed
+	if remainingBits < 32 {
+		return compressed, remainingBits
+	}
+	return compressed, 0
 }
 
-func decompressString(input []uint32, root *HuffmanNode) (nxtNode *HuffmanNode, output []rune, err error) {
-	lIndex := 0
+func decompressString(input uint32, bitsToRead uint, root *HuffmanNode) (nxtNode *HuffmanNode, output []rune, err error) {
 	nxtNode = root
-	for _, w := range input {
+	for i := range bitsToRead {
+		w := (input >> (31 - i)) & 1
 		nxtNode, err = getNextNode(w, nxtNode)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error getting next node: %v", err)
@@ -147,7 +152,6 @@ func decompressString(input []uint32, root *HuffmanNode) (nxtNode *HuffmanNode, 
 			output = append(output, nxtNode.char)
 			nxtNode = root
 		}
-		lIndex++
 	}
 	return nxtNode, output, nil
 }
