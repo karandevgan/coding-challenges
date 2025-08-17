@@ -2,6 +2,8 @@ package main
 
 import (
 	"maps"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -9,37 +11,107 @@ func TestHuffmanTree(t *testing.T) {
 	tests := []struct {
 		name                string
 		inputMap            map[rune]int
-		expected            *HuffmanNode
-		expectedLookupTable map[rune]uint32
+		expectedTree        *HuffmanNode
+		expectedLookupTable map[rune]lookupValue
 	}{
-		{name: "test1", inputMap: map[rune]int{'C': 32, 'D': 42, 'E': 120, 'K': 7, 'L': 42, 'M': 24, 'U': 37, 'Z': 2}, expected: getExpectedTreeTest1(), expectedLookupTable: getExpectedLookupTableTest1()},
+		{
+			name:                "test1",
+			inputMap:            map[rune]int{'C': 32, 'D': 42, 'E': 120, 'K': 7, 'L': 42, 'M': 24, 'U': 37, 'Z': 2},
+			expectedTree:        getExpectedTreeTest1(),
+			expectedLookupTable: getExpectedLookupTableTest1(),
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			actual := buildHuffmanTree(tc.inputMap)
-			if !compareNodes(actual, tc.expected) {
-				t.Fatalf("unexpected output: expected %v, got %v", tc.expected, actual)
+			if !compareNodes(actual, tc.expectedTree) {
+				t.Fatalf("unexpected output: expectedTree %v, got %v", tc.expectedTree, actual)
 			}
-			actualLookupTable := make(map[rune]uint32)
-			buildLookupTable(actual, actualLookupTable, 32, 0)
+			actualLookupTable := make(map[rune]lookupValue)
+			buildLookupTable(actual, actualLookupTable, 0, 0)
 			if !maps.Equal(actualLookupTable, tc.expectedLookupTable) {
-				t.Fatalf("unexpected output: expected %v, got %v", tc.expectedLookupTable, actualLookupTable)
+				t.Fatalf("unexpected output: expectedLookupTable %v, got %v", tc.expectedLookupTable, actualLookupTable)
 			}
 		})
 	}
 }
 
-func getExpectedLookupTableTest1() map[rune]uint32 {
-	lMap := make(map[rune]uint32)
-	lMap['C'] = 14 // 1110
-	lMap['D'] = 5  // 101
-	lMap['E'] = 0  // 0
-	lMap['K'] = 61 // 111101
-	lMap['L'] = 6  // 110
-	lMap['M'] = 31 // 11111
-	lMap['U'] = 4  // 100
-	lMap['Z'] = 60 // 111100
+func TestCompression(t *testing.T) {
+	tests := []struct {
+		name               string
+		lookupTable        map[rune]lookupValue
+		input              string
+		expectedCompressed []uint32
+	}{
+		{
+			name:               "Test DEED",
+			lookupTable:        getExpectedLookupTableTest1(),
+			input:              "DEED",
+			expectedCompressed: []uint32{2768240640},
+		},
+		{
+			name:               "Test MUCK",
+			lookupTable:        getExpectedLookupTableTest1(),
+			input:              "MUCK",
+			expectedCompressed: []uint32{4243537920},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := compressString(tc.input, tc.lookupTable)
+			if b := slices.Equal(tc.expectedCompressed, actual); !b {
+				t.Fatalf("unexpected output: expectedCompressed %v, got %v", tc.expectedCompressed, actual)
+			}
+		})
+	}
+}
+
+func TestDecompression(t *testing.T) {
+	tests := []struct {
+		name                 string
+		huffmanTree          *HuffmanNode
+		input                []uint32
+		expectedDecompressed string
+	}{
+		{
+			name:                 "Test DEED",
+			huffmanTree:          getExpectedTreeTest1(),
+			input:                []uint32{2768240640},
+			expectedDecompressed: "DEED",
+		},
+		{
+			name:                 "Test MUCK",
+			huffmanTree:          getExpectedTreeTest1(),
+			input:                []uint32{4243537920},
+			expectedDecompressed: "MUCK",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, runes, err := decompressString(tc.input, tc.huffmanTree)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !strings.EqualFold(tc.expectedDecompressed, string(runes)) {
+				t.Fatalf("unexpected output: expectedDecompressed %v, got %v", tc.expectedDecompressed, string(runes))
+			}
+		})
+	}
+}
+
+func getExpectedLookupTableTest1() map[rune]lookupValue {
+	lMap := make(map[rune]lookupValue)
+	lMap['C'] = lookupValue{representation: 14, length: 4} // 1110
+	lMap['D'] = lookupValue{representation: 5, length: 3}  // 101
+	lMap['E'] = lookupValue{representation: 0, length: 1}  // 0
+	lMap['K'] = lookupValue{representation: 61, length: 6} // 111101
+	lMap['L'] = lookupValue{representation: 6, length: 3}  // 110
+	lMap['M'] = lookupValue{representation: 31, length: 5} // 11111
+	lMap['U'] = lookupValue{representation: 4, length: 3}  // 100
+	lMap['Z'] = lookupValue{representation: 60, length: 6} // 111100
 	return lMap
 }
 

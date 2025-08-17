@@ -21,8 +21,8 @@ func main() {
 	}
 	//fmt.Printf("Frequency map: %v\n", frequenciesFromFile)
 	rootNode := buildHuffmanTree(frequenciesFromFile)
-	lookupMap := make(map[rune]uint32)
-	buildLookupTable(rootNode, lookupMap, 32, 0)
+	lookupMap := make(map[rune]lookupValue)
+	buildLookupTable(rootNode, lookupMap, 0, 0)
 	fmt.Printf("Lookup Map: %v\n", lookupMap)
 	//outFile := args[1]
 	//fmt.Printf("Writing to file: %s\n", outFile)

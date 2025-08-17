@@ -24,7 +24,7 @@ func TestFrequencies(t *testing.T) {
 			keys := maps.Keys(tc.expected)
 			for key := range keys {
 				if tc.expected[key] != actualMap[key] {
-					t.Fatalf("unexpected value for key %q: expected %d, got %d", key, tc.expected[key], actualMap[key])
+					t.Fatalf("unexpected value for key %q: expectedTree %d, got %d", key, tc.expected[key], actualMap[key])
 				}
 			}
 		})
