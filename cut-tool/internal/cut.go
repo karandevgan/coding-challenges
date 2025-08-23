@@ -2,12 +2,18 @@ package internal
 
 import "strings"
 
-func GetStringAtColumn(s string, col int, sep string) string {
+func GetStringAtColumn(s string, sep string, col int, cols ...int) string {
 	l := strings.Split(s, sep)
-	if col <= 0 {
-		return ""
+	ss := make([]string, 0, len(cols))
+	ss = append(ss, getStringAtColumn(l, len(l), col))
+	for _, c := range cols {
+		ss = append(ss, getStringAtColumn(l, len(l), c))
 	}
-	if len(l) < col {
+	return strings.Join(ss, sep)
+}
+
+func getStringAtColumn(l []string, sLen int, col int) string {
+	if col <= 0 || col > sLen {
 		return ""
 	}
 	return l[col-1]
