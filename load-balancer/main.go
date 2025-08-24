@@ -40,6 +40,7 @@ func main() {
 			log.Printf("Performing health check on backend servers\n")
 			currentHealthyServers := make([]string, 0, len(backendServers))
 			for _, server := range backendServers {
+				// TODO: Check server health in parallel
 				if !checkServerHealth(server) {
 					log.Printf("Removing server %s from backend servers\n", server)
 				} else {
@@ -91,11 +92,11 @@ func checkServerHealth(server string) bool {
 }
 
 func handleConnection(conn net.Conn, nextServer string) {
-	defer conn.Close()
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Recovered from panic in handleConnection: %v", r)
 		}
+		_ = conn.Close()
 	}()
 	_ = conn.SetDeadline(time.Now().Add(responseTimeout))
 	reader := bufio.NewReader(conn)
@@ -113,6 +114,7 @@ func handleConnection(conn net.Conn, nextServer string) {
 	_ = dConn.SetDeadline(time.Now().Add(responseTimeout))
 
 	var wg sync.WaitGroup
+	// Copy data in both directions in parallel
 	wg.Add(2)
 	go func() {
 		defer func() {
