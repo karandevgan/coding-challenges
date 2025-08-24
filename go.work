@@ -6,4 +6,5 @@ use (
 	stack
 	compression
 	cut-tool
+	load-balancer
 )
