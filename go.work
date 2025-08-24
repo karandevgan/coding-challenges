@@ -7,4 +7,5 @@ use (
 	compression
 	cut-tool
 	load-balancer
+	test-server
 )
