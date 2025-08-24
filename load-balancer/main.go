@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+var (
+	totalRequests     uint64
+	failedRequests    uint64
+	activeConnections int32
+)
+
 var backendServers = []string{"localhost:8080", "localhost:8081", "localhost:8082"}
 var healthCheckUrl = "/"
 var healthCheckTimeout = 5 * time.Second
@@ -32,26 +38,8 @@ func main() {
 
 	// Initialize snapshot
 	serverList.Store(append([]string(nil), backendServers...))
-
-	ticker := time.NewTicker(healthCheckInterval)
-	defer ticker.Stop()
-	go func() {
-		for range ticker.C {
-			log.Printf("Performing health check on backend servers\n")
-			currentHealthyServers := make([]string, 0, len(backendServers))
-			for _, server := range backendServers {
-				// TODO: Check server health in parallel
-				if !checkServerHealth(server) {
-					log.Printf("Removing server %s from backend servers\n", server)
-				} else {
-					log.Printf("Server %s is healthy\n", server)
-					currentHealthyServers = append(currentHealthyServers, server)
-				}
-			}
-			// Update snapshot
-			serverList.Store(currentHealthyServers)
-		}
-	}()
+	startHealthCheckInBackground()
+	printStats()
 
 	for {
 		conn, err := listener.Accept()
@@ -64,14 +52,52 @@ func main() {
 			log.Printf("No healthy servers, closing connection\n")
 			// Send 503 Service Unavailable response
 			_, _ = conn.Write([]byte("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 19\r\n\r\nService Unavailable\n"))
+			atomic.AddUint64(&failedRequests, 1)
 			_ = conn.Close()
 			continue
 		}
 		idx := atomic.AddUint64(&nextServerCounter, 1) - 1
 		nextServer := currentHealthyServers[idx%uint64(len(currentHealthyServers))]
 		log.Printf("Received request from %s\n", conn.RemoteAddr())
+		atomic.AddUint64(&totalRequests, 1)
+		atomic.AddInt32(&activeConnections, 1)
 		go handleConnection(conn, nextServer)
+		atomic.AddInt32(&activeConnections, -1)
 	}
+}
+
+func startHealthCheckInBackground() {
+	ticker := time.NewTicker(healthCheckInterval)
+	go func() {
+		defer ticker.Stop()
+		for range ticker.C {
+			log.Printf("Performing health check on backend servers\n")
+			currentHealthyServers := make([]string, 0, len(backendServers))
+			for _, server := range backendServers {
+				// TODO: Check server health in parallel
+				if !checkServerHealth(server) {
+					log.Printf("Removing server %s from backend servers\n", server)
+				} else {
+					//log.Printf("Server %s is healthy\n", server)
+					currentHealthyServers = append(currentHealthyServers, server)
+				}
+			}
+			// Update snapshot
+			serverList.Store(currentHealthyServers)
+		}
+	}()
+}
+
+func printStats() {
+	ticker := time.NewTicker(5 * time.Second)
+	go func() {
+		defer ticker.Stop()
+		for range ticker.C {
+			log.Printf("Total requests: %d\n", totalRequests)
+			log.Printf("Failed requests: %d\n", failedRequests)
+			log.Printf("Active connections: %d\n", activeConnections)
+		}
+	}()
 }
 
 func checkServerHealth(server string) bool {
@@ -95,6 +121,7 @@ func handleConnection(conn net.Conn, nextServer string) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Recovered from panic in handleConnection: %v", r)
+			atomic.AddUint64(&failedRequests, 1)
 		}
 		_ = conn.Close()
 	}()
@@ -108,6 +135,7 @@ func handleConnection(conn net.Conn, nextServer string) {
 	if err != nil {
 		log.Printf("Error connecting to backend server: %s\n", err)
 		_, _ = conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 15\r\n\r\nBad Gateway\n"))
+		atomic.AddUint64(&failedRequests, 1)
 		return
 	}
 	defer dConn.Close()
@@ -120,6 +148,7 @@ func handleConnection(conn net.Conn, nextServer string) {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("Recovered from panic in copy to backend: %v", r)
+				atomic.AddUint64(&failedRequests, 1)
 			}
 			// Close write side of backend connection when client stops sending
 			if tcpConn, ok := dConn.(*net.TCPConn); ok {
@@ -129,6 +158,7 @@ func handleConnection(conn net.Conn, nextServer string) {
 		}()
 		_, err := io.Copy(dConn, reader)
 		if err != nil {
+			atomic.AddUint64(&failedRequests, 1)
 			log.Printf("Error copying data to backend server: %s\n", err)
 		}
 	}()
@@ -136,6 +166,7 @@ func handleConnection(conn net.Conn, nextServer string) {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("Recovered from panic in copy from backend: %v", r)
+				atomic.AddUint64(&failedRequests, 1)
 			}
 			// Close write side of client connection when backend stops sending
 			if tcpConn, ok := conn.(*net.TCPConn); ok {
@@ -146,6 +177,7 @@ func handleConnection(conn net.Conn, nextServer string) {
 		_, err := io.Copy(conn, dConn)
 		if err != nil {
 			log.Printf("Error copying data from backend server: %s\n", err)
+			atomic.AddUint64(&failedRequests, 1)
 		}
 	}()
 
