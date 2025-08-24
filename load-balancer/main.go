@@ -13,6 +13,11 @@ import (
 
 var backendServers = []string{"localhost:8080", "localhost:8081", "localhost:8082"}
 var healthCheckUrl = "/"
+var healthCheckTimeout = 5 * time.Second
+var healthCheckInterval = 10 * time.Second
+var connectionTimeout = 60 * time.Second
+var responseTimeout = 60 * time.Second
+
 var serverList atomic.Value // holds []string
 var nextServerCounter uint64
 
@@ -28,7 +33,7 @@ func main() {
 	// Initialize snapshot
 	serverList.Store(append([]string(nil), backendServers...))
 
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(healthCheckInterval)
 	defer ticker.Stop()
 	go func() {
 		for range ticker.C {
@@ -70,7 +75,7 @@ func main() {
 
 func checkServerHealth(server string) bool {
 	client := http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: healthCheckTimeout,
 	}
 	res, err := client.Get("http://" + server + healthCheckUrl)
 	if err != nil {
@@ -92,20 +97,20 @@ func handleConnection(conn net.Conn, nextServer string) {
 			log.Printf("Recovered from panic in handleConnection: %v", r)
 		}
 	}()
-	_ = conn.SetDeadline(time.Now().Add(60 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(responseTimeout))
 	reader := bufio.NewReader(conn)
 	bServer := nextServer
 	log.Printf("Forwarding request to backend server %s\n", bServer)
 
 	// Dial backend server
-	dConn, err := net.DialTimeout("tcp", bServer, 30*time.Second)
+	dConn, err := net.DialTimeout("tcp", bServer, connectionTimeout)
 	if err != nil {
 		log.Printf("Error connecting to backend server: %s\n", err)
 		_, _ = conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 15\r\n\r\nBad Gateway\n"))
 		return
 	}
 	defer dConn.Close()
-	_ = dConn.SetDeadline(time.Now().Add(60 * time.Second))
+	_ = dConn.SetDeadline(time.Now().Add(responseTimeout))
 
 	var wg sync.WaitGroup
 	wg.Add(2)
