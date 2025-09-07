@@ -8,4 +8,5 @@ use (
 	cut-tool
 	load-balancer
 	test-server
+	sort-tool
 )
